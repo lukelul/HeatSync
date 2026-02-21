@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HeatRouter — Thermal Packet Switching</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap');
+  :root {
+    --bg:#080c0f; --panel:#0d1318; --border:#1a2530;
+    --accent:#ff4d00; --accent2:#00c9ff;
+    --cold:#00c9ff; --text:#e8eef2; --muted:#4a6070; --green:#00e676; --yellow:#ffd200;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;
+    display:grid;grid-template-rows:52px 1fr;grid-template-columns:320px 1fr 340px;}
+  header{grid-column:1/-1;background:var(--panel);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;padding:0 20px;gap:20px;}
+  .logo{font-weight:800;font-size:18px;letter-spacing:-0.5px;color:var(--accent);}
+  .logo span{color:var(--accent2);}
+  .tagline{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;}
+  .header-stats{margin-left:auto;display:flex;gap:28px;align-items:center;}
+  .hstat{text-align:right;}
+  .hstat-val{font-weight:700;font-size:14px;color:var(--accent2);}
+  .hstat-label{font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+  .ds-bar{display:flex;gap:5px;flex-wrap:wrap;padding:5px 0;}
+  .ds-badge{font-family:'Space Mono',monospace;font-size:7px;padding:3px 6px;border-radius:2px;
+    border:1px solid;letter-spacing:0.5px;text-transform:uppercase;cursor:default;}
+  .ds-badge.nrel{border-color:#00e676;color:#00e676;}
+  .ds-badge.egrid{border-color:#ffd200;color:#ffd200;}
+  .ds-badge.eia{border-color:#00c9ff;color:#00c9ff;}
+  .ds-badge.osrm{border-color:#ff4d00;color:#ff4d00;}
+  .ds-badge.cambium{border-color:#c084fc;color:#c084fc;}
+
+  .left-panel{background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:14px;
+    display:flex;flex-direction:column;gap:12px;}
+  .panel-title{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;
+    color:var(--muted);padding-bottom:6px;border-bottom:1px solid var(--border);}
+  .node-list{display:flex;flex-direction:column;gap:6px;}
+  .node-card{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:9px 11px;
+    cursor:pointer;transition:all 0.15s;position:relative;overflow:hidden;}
+  .node-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;}
+  .node-card.tank::before{background:#00e676;}
+  .node-card.source::before{background:var(--accent);}
+  .node-card.sink::before{background:var(--cold);}
+  .node-card:hover{border-color:var(--muted);transform:translateX(2px);}
+  .node-card.selected{border-color:var(--accent2);background:rgba(0,201,255,0.04);}
+  .node-name{font-weight:700;font-size:11px;margin-bottom:3px;}
+  .node-meta{font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);}
+  .node-heat{font-family:'Space Mono',monospace;font-size:10px;margin-top:3px;}
+  .source .node-heat{color:var(--accent);}
+  .sink .node-heat{color:var(--cold);}
+
+  .btn{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+    padding:9px 14px;border:none;border-radius:3px;cursor:pointer;transition:all 0.15s;width:100%;}
+  .btn-primary{background:var(--accent);color:white;}
+  .btn-primary:hover{background:#ff6633;}
+  .btn-primary:disabled{background:#2a2a2a;color:#555;cursor:not-allowed;}
+  .btn-secondary{background:transparent;color:var(--accent2);border:1px solid var(--accent2);}
+  .btn-secondary:hover{background:rgba(0,201,255,0.1);}
+
+  .map-container{position:relative;overflow:hidden;}
+  #map{width:100%;height:100%;}
+  .map-overlay{position:absolute;top:12px;left:12px;z-index:1000;display:flex;flex-direction:column;gap:5px;}
+  .overlay-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;
+    padding:5px 9px;background:rgba(8,12,15,0.92);border:1px solid var(--border);color:var(--text);
+    cursor:pointer;border-radius:3px;transition:all 0.15s;backdrop-filter:blur(4px);}
+  .overlay-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .overlay-btn.active{border-color:var(--accent2);color:var(--accent2);background:rgba(0,201,255,0.1);}
+  .algo-status{position:absolute;bottom:12px;left:12px;z-index:1000;background:rgba(8,12,15,0.93);
+    border:1px solid var(--border);border-radius:4px;padding:10px 13px;font-family:'Space Mono',monospace;
+    font-size:9px;backdrop-filter:blur(4px);min-width:210px;}
+  .algo-line{display:flex;justify-content:space-between;gap:14px;padding:2px 0;color:var(--muted);}
+  .algo-line span:last-child{color:var(--text);}
+  .algo-line.hl{color:var(--green);}
+  .algo-line.hl span:last-child{color:var(--green);}
+
+  .right-panel{background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;padding:14px;
+    display:flex;flex-direction:column;gap:12px;}
+  .chart-box{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:12px;}
+  .chart-title{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:1px;text-transform:uppercase;
+    color:var(--muted);margin-bottom:8px;}
+  .project-card{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:11px;margin-bottom:6px;}
+  .project-rank{font-family:'Space Mono',monospace;font-size:8px;color:var(--accent);letter-spacing:2px;
+    text-transform:uppercase;margin-bottom:3px;}
+  .project-name{font-weight:700;font-size:12px;margin-bottom:7px;}
+  .project-metrics{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .metric{background:var(--panel);border-radius:3px;padding:5px 7px;}
+  .metric-val{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--green);}
+  .metric-label{font-family:'Space Mono',monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  .algo-step{font-family:'Space Mono',monospace;font-size:9px;padding:4px 0;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:6px;color:var(--muted);transition:color 0.3s;}
+  .algo-step.done{color:var(--green);}
+  .algo-step.active{color:var(--accent2);}
+  .algo-step-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+  .brief-box{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:12px;
+    font-family:'Space Mono',monospace;font-size:9px;line-height:1.7;color:#8aa0b0;
+    white-space:pre-wrap;max-height:260px;overflow-y:auto;}
+  .select-hint{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);text-align:center;
+    padding:10px;border:1px dashed var(--border);border-radius:4px;}
+  .legend{display:flex;flex-direction:column;gap:5px;}
+  .legend-item{display:flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:8px;color:var(--muted);}
+  .leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .leg-line{width:18px;height:2px;flex-shrink:0;}
+  ::-webkit-scrollbar{width:3px;}
+  ::-webkit-scrollbar-track{background:var(--bg);}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Heat<span>Router</span></div>
+  <div class="tagline">Thermal Packet Switching // Chicago, IL</div>
+  <div class="header-stats">
+    <div class="hstat"><div class="hstat-val" id="total-heat">— MW</div><div class="hstat-label">Recoverable Heat</div></div>
+    <div class="hstat"><div class="hstat-val" id="total-savings">—</div><div class="hstat-label">CO₂ Avoided/yr</div></div>
+    <div class="hstat"><div class="hstat-val" id="total-cost">$—M</div><div class="hstat-label">Est. Project Cost</div></div>
+    <div class="hstat"><div class="hstat-val" style="color:var(--yellow)">386 lbs/MWh</div><div class="hstat-label">eGRID ILSOW 2022</div></div>
+    <div class="status-dot"></div>
+  </div>
+</header>
+
+<div class="left-panel">
+  <div class="panel-title">Data Sources</div>
+  <div class="ds-bar">
+    <span class="ds-badge osrm" title="OpenStreetMap road network via OSRM">OSRM Roads</span>
+    <span class="ds-badge nrel" title="NREL End-Use Load Profiles ComStock">NREL ComStock</span>
+    <span class="ds-badge egrid" title="EPA eGRID 2022 ILSOW subregion">EPA eGRID</span>
+    <span class="ds-badge eia" title="EIA-930 hourly grid operations">EIA-930</span>
+    <span class="ds-badge cambium" title="NREL Cambium 2022 SRMER marginal emissions">Cambium SRMER</span>
+  </div>
+
+  <div class="panel-title">Heat Sources & Sinks</div>
+  <div class="node-list" id="node-list"></div>
+
+  <div style="margin-top:auto;display:flex;flex-direction:column;gap:7px;">
+    <button class="btn btn-primary" id="run-btn" onclick="runOptimization()">⚡ Run Optimization</button>
+    <button class="btn btn-secondary" onclick="resetAll()">↺ Reset</button>
+  </div>
+
+  <div>
+    <div class="panel-title">Legend</div>
+    <div class="legend" style="margin-top:7px;">
+      <div class="legend-item"><div class="leg-dot" style="background:#ff4d00"></div>Heat Source (DC / industrial)</div>
+      <div class="legend-item"><div class="leg-dot" style="background:#00c9ff"></div>Heat Sink (building demand)</div>
+      <div class="legend-item"><div class="leg-dot" style="background:#00e676"></div>Thermal Storage Tank (click to toggle)</div>
+      <div class="legend-item"><div class="leg-line" style="background:rgba(255,140,0,0.4);border-top:2px dashed #ff8040"></div>Wavefront search edges</div>
+      <div class="legend-item"><div class="leg-line" style="background:#ff4d00;height:3px"></div>Source → Tank pipe</div>
+      <div class="legend-item"><div class="leg-line" style="background:#00e676;height:3px"></div>Tank → Sink pipe</div>
+      <div class="legend-item"><div class="leg-line" style="background:#ff0040;height:3px"></div>Road obstruction (draw to block)</div>
+    </div>
+  </div>
+</div>
+
+<div class="map-container">
+  <div id="map"></div>
+  <div class="map-overlay">
+    <button class="overlay-btn active" id="btn-route" onclick="setMode('route')">Routing</button>
+    <button class="overlay-btn" id="btn-heat" onclick="setMode('heat')">Heatmap</button>
+    <button class="overlay-btn" id="btn-emissions" onclick="setMode('emissions')">Emissions</button>
+    <button class="overlay-btn" id="btn-obstruct" onclick="toggleObstructMode()" style="border-color:#ff0040;color:#ff0040;">🚫 Obstruct</button>
+    <button class="overlay-btn" onclick="clearObstructions()" style="font-size:8px;color:#4a6070;">✕ Clear blocks</button>
+  </div>
+  <div class="algo-status">
+    <div class="algo-line"><span>STATUS</span><span id="status-text">Click any 🔵 sink to auto-route</span></div>
+    <div class="algo-line"><span>FRONTIER</span><span id="nodes-visited">0 nodes</span></div>
+    <div class="algo-line"><span>ROUTE LENGTH</span><span id="route-length">— km</span></div>
+    <div class="algo-line hl"><span>HEAT RECOVERED</span><span id="heat-recovered">— MW</span></div>
+    <div class="algo-line"><span>EMISSIONS REF</span><span>eGRID ILSOW</span></div>
+  </div>
+</div>
+
+<div class="right-panel">
+  <div class="panel-title">Algorithm Trace</div>
+  <div id="algo-steps"><div class="select-hint">Click any blue sink node — sources are auto-selected.</div></div>
+
+  <div class="panel-title">Hourly Schedule · NREL ComStock Profiles</div>
+  <div class="chart-box">
+    <div class="chart-title">Heat Supply vs Building Demand (24hr) · MW</div>
+    <canvas id="schedule-chart" height="110"></canvas>
+  </div>
+
+  <div class="panel-title">Cambium SRMER · Marginal Emissions</div>
+  <div class="chart-box">
+    <div class="chart-title">Hourly Marginal CO₂ Rate · lbs/MWh · Best dispatch hours = green</div>
+    <canvas id="emissions-chart" height="75"></canvas>
+  </div>
+
+  <div class="panel-title">Top Projects</div>
+  <div id="projects-list"><div class="select-hint">Run optimization to generate recommendations.</div></div>
+
+  <div class="panel-title">Explain / Stakeholder Packet</div>
+  <div id="brief-area"><div class="select-hint">Run optimization to generate auto-brief.</div></div>
+</div>
+
+<script>
+// ============================================================
+// NODES — real Chicago locations
+// ============================================================
+const NODES = [
+  { id:0, name:'Switch SUPERNAP Chicago', type:'source', lat:41.8781, lng:-87.6298, heat:8.4, temp:45, desc:'Hyperscale DC, West Loop' },
+  { id:1, name:'CTA Blue Line Tunnel',    type:'source', lat:41.8825, lng:-87.6341, heat:2.1, temp:38, desc:'Transit exhaust heat' },
+  { id:2, name:'Merchandise Mart',        type:'sink',   lat:41.8886, lng:-87.6354, heat:5.2, temp:65, desc:'2.2M sq ft commercial' },
+  { id:3, name:'River North District',    type:'sink',   lat:41.8923, lng:-87.6277, heat:3.8, temp:65, desc:'Mixed residential/commercial' },
+  { id:4, name:'Kinzie Industrial Corr.', type:'source', lat:41.8878, lng:-87.6601, heat:5.7, temp:52, desc:'Industrial waste heat' },
+  { id:5, name:'Goose Island Residential',type:'sink',   lat:41.9001, lng:-87.6451, heat:2.9, temp:65, desc:'Dense residential' },
+  { id:6, name:'Northwestern Chicago',    type:'sink',   lat:41.8957, lng:-87.6189, heat:4.1, temp:65, desc:'University campus' },
+  { id:7, name:'Google Chicago HQ',       type:'source', lat:41.8847, lng:-87.6392, heat:1.8, temp:40, desc:'Corporate DC heat' },
+  // THERMAL STORAGE TANKS — green, act as intermediate buffer nodes
+  { id:8, name:'Tank A — West Loop',      type:'tank',   lat:41.8820, lng:-87.6420, cap:50,  desc:'200 MWh molten salt buffer' },
+  { id:9, name:'Tank B — River North',    type:'tank',   lat:41.8960, lng:-87.6320, cap:30,  desc:'120 MWh insulated water tank' },
+  { id:10,name:'Tank C — Goose Island',   type:'tank',   lat:41.8940, lng:-87.6520, cap:40,  desc:'160 MWh stratified tank' },
+];
+
+// NREL ComStock end-use load shape priors (normalized 0–1, weekday)
+const NREL_DC_SHAPE =     [0.88,0.87,0.87,0.86,0.86,0.87,0.89,0.92,0.96,0.98,0.99,1.00,0.99,1.00,0.99,0.98,0.97,0.96,0.95,0.93,0.92,0.91,0.90,0.89];
+const NREL_OFFICE_SHAPE = [0.28,0.25,0.23,0.22,0.23,0.27,0.38,0.55,0.72,0.85,0.91,0.93,0.92,0.93,0.92,0.90,0.85,0.75,0.62,0.50,0.42,0.38,0.35,0.31];
+
+// Cambium 2022 SRMER stylized from real hourly shape (lbs/MWh)
+const CAMBIUM_SRMER = [410,398,385,371,362,358,365,388,425,448,461,468,472,470,465,458,450,462,480,492,485,465,445,428];
+
+// EPA eGRID 2022 ILSOW subregion
+const EGRID_LBS_MWH = 386;
+const EGRID_KG_KWH = 0.175;
+
+// ============================================================
+// STATE
+// ============================================================
+let map, heatLayer=null, emLayer=null;
+let routeLayer=[], exploredLayer=[], tankLayer=[];
+let selectedSources=[];
+let selectedSink=null;
+let selectedSource=null;
+let mode='route', animating=false;
+let schedChart=null, emChart=null;
+
+// Obstruction state
+let obstructMode=false;
+let obstructedSegments=new Set(); // Set of "lat1,lng1|lat2,lng2" keys
+let obstructLines=[]; // Leaflet polylines drawn red on map
+let drawingObstruct=false;
+
+// ============================================================
+// UTILS
+// ============================================================
+function haverDist(a,b){
+  const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180;
+  return R*2*Math.atan2(Math.sqrt(Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2),
+    Math.sqrt(1-Math.sin(dLat/2)**2-Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2));
+}
+const sleep = ms=>new Promise(r=>setTimeout(r,ms));
+
+// ============================================================
+// MAP INIT
+// ============================================================
+function initMap(){
+  map=L.map('map',{zoomControl:false}).setView([41.888,-87.638],14);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'©OpenStreetMap ©CARTO',maxZoom:19}).addTo(map);
+  L.control.zoom({position:'bottomright'}).addTo(map);
+  renderNodes();
+  initCharts();
+}
+
+function getIcon(node,selected){
+  if(node.type==='tank'){
+    const s=selected?20:15;
+    const glow=selected?`box-shadow:0 0 14px #00e676,0 0 4px white;`:'box-shadow:0 0 6px rgba(0,230,118,0.4);';
+    return L.divIcon({
+      className:'',
+      html:`<div style="width:${s}px;height:${s}px;border-radius:50%;background:#00e676;border:2px solid ${selected?'white':'#00b050'};${glow}display:flex;align-items:center;justify-content:center;font-size:9px;">🛢</div>`,
+      iconSize:[s,s],iconAnchor:[s/2,s/2]
+    });
+  }
+  const c=node.type==='source'?'#ff4d00':'#00c9ff';
+  const s=selected?18:13;
+  const glow=selected?`box-shadow:0 0 14px ${c},0 0 4px rgba(255,255,255,0.5);`:'';
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:${s}px;height:${s}px;border-radius:50%;background:${c};border:2px solid ${selected?'white':c};${glow}transition:all 0.2s"></div>`,
+    iconSize:[s,s],iconAnchor:[s/2,s/2]
+  });
+}
+
+function renderNodes(){
+  NODES.forEach(n=>{
+    const typeLabel = n.type==='source'?'🔴 SOURCE':n.type==='tank'?'🟢 TANK':'🔵 SINK';
+    const detail = n.type==='tank'?`${n.cap} MWh storage`:` ${n.heat} MW @ ${n.temp}°C`;
+    const m=L.marker([n.lat,n.lng],{icon:getIcon(n,false)})
+      .addTo(map)
+      .bindTooltip(`<b>${n.name}</b><br>${typeLabel}: ${detail}`,{direction:'top'});
+    m.on('click',()=>{
+      if(obstructMode) return; // don't select nodes while painting obstructions
+      selectNode(n,m);
+    });
+    n.marker=m;
+  });
+}
+
+// ============================================================
+// OBSTRUCTION PAINTING
+// ============================================================
+function toggleObstructMode(){
+  obstructMode=!obstructMode;
+  const btn=document.getElementById('btn-obstruct');
+  btn.classList.toggle('active',obstructMode);
+  btn.textContent=obstructMode?'🚫 Painting...':'🚫 Obstruct';
+  map.getContainer().style.cursor=obstructMode?'crosshair':'';
+
+  if(obstructMode){
+    map.dragging.disable();
+    map.on('mousedown',startObstructDraw);
+    map.on('mouseup',stopObstructDraw);
+  } else {
+    map.dragging.enable();
+    map.off('mousedown',startObstructDraw);
+    map.off('mouseup',stopObstructDraw);
+    map.off('mousemove',continueObstructDraw);
+  }
+}
+
+let obstructPath=[];
+let obstructPreviewLine=null;
+
+function startObstructDraw(e){
+  drawingObstruct=true;
+  obstructPath=[e.latlng];
+  map.on('mousemove',continueObstructDraw);
+}
+
+function continueObstructDraw(e){
+  if(!drawingObstruct) return;
+  obstructPath.push(e.latlng);
+  if(obstructPreviewLine) map.removeLayer(obstructPreviewLine);
+  obstructPreviewLine=L.polyline(obstructPath,{color:'#ff0040',weight:5,opacity:0.85,dashArray:'8 4'}).addTo(map);
+}
+
+function stopObstructDraw(e){
+  if(!drawingObstruct) return;
+  drawingObstruct=false;
+  map.off('mousemove',continueObstructDraw);
+  if(obstructPreviewLine){ map.removeLayer(obstructPreviewLine); obstructPreviewLine=null; }
+  if(obstructPath.length<2) return;
+
+  // Commit as permanent red obstruction line
+  const line=L.polyline(obstructPath,{color:'#ff0040',weight:5,opacity:0.75,dashArray:'8 4'}).addTo(map);
+  // Allow clicking to remove
+  line.on('click',()=>{
+    map.removeLayer(line);
+    obstructLines=obstructLines.filter(l=>l!==line);
+    // Rebuild obstruction bboxes
+    rebuildObstructBBoxes();
+  });
+  obstructLines.push(line);
+  rebuildObstructBBoxes();
+  obstructPath=[];
+}
+
+// Build a set of lat/lng bounding boxes for painted obstructions
+let obstructBBoxes=[];
+function rebuildObstructBBoxes(){
+  obstructBBoxes=obstructLines.map(line=>{
+    const lls=line.getLatLngs();
+    const lats=lls.map(l=>l.lat), lngs=lls.map(l=>l.lng);
+    return{
+      minLat:Math.min(...lats)-0.0004,
+      maxLat:Math.max(...lats)+0.0004,
+      minLng:Math.min(...lngs)-0.0006,
+      maxLng:Math.max(...lngs)+0.0006,
+    };
+  });
+}
+
+function clearObstructions(){
+  obstructLines.forEach(l=>map.removeLayer(l));
+  obstructLines=[];
+  obstructBBoxes=[];
+}
+
+// Check if a road segment (array of [lat,lng]) passes through any obstruction bbox
+function segmentIsObstructed(coords){
+  if(obstructBBoxes.length===0) return false;
+  for(const pt of coords){
+    const [lat,lng]=pt;
+    for(const bb of obstructBBoxes){
+      if(lat>=bb.minLat&&lat<=bb.maxLat&&lng>=bb.minLng&&lng<=bb.maxLng) return true;
+    }
+  }
+  return false;
+}
+
+function selectNode(node, marker){
+  if(node.type==='tank'){
+    // Toggle tank active/inactive
+    node.active = !node.active;
+    marker.setIcon(getIcon(node, node.active));
+    updateNodeList();
+    return;
+  }
+  if(node.type==='source'){
+    const idx = selectedSources.indexOf(node);
+    if(idx >= 0){
+      selectedSources.splice(idx,1);
+      marker.setIcon(getIcon(node,false));
+    } else {
+      selectedSources.push(node);
+      marker.setIcon(getIcon(node,true));
+    }
+    selectedSource = selectedSources[0]||null;
+    updateNodeList();
+    document.getElementById('status-text').textContent =
+      selectedSink ? 'Ready — click Run' : 'Now pick a sink ↓';
+  } else {
+    if(selectedSink) selectedSink.marker.setIcon(getIcon(selectedSink,false));
+    selectedSources.forEach(s=>s.marker.setIcon(getIcon(s,false)));
+    selectedSources=[];
+    selectedSink = node;
+    marker.setIcon(getIcon(node,true));
+
+    const sources = NODES.filter(n=>n.type==='source');
+    const scored = sources.map(s=>{
+      const d = haverDist(s, selectedSink);
+      const heatScore = 1/(s.heat+0.1);
+      const liftPenalty = Math.max(0,(selectedSink.temp - s.temp - 15)*0.05);
+      const obstructionProxy = d > 2.5 ? 0.3 : 0;
+      const score = d*0.5 + heatScore*2 + liftPenalty + obstructionProxy;
+      return { node:s, score, d:d.toFixed(2) };
+    }).sort((a,b)=>a.score-b.score);
+
+    let covered = 0;
+    const demand = selectedSink.heat;
+    for(const s of scored){
+      if(covered >= demand) break;
+      selectedSources.push(s.node);
+      s.node._score = s.score;
+      s.node._dist = s.d;
+      s.node._rank = selectedSources.length;
+      covered += s.node.heat;
+      if(selectedSources.length >= 3) break;
+    }
+    selectedSources.forEach(s=>s.marker.setIcon(getIconRanked(s, s._rank)));
+    selectedSource = selectedSources[0]||null;
+    updateNodeList();
+    document.getElementById('status-text').textContent = `Auto-selected ${selectedSources.length} source(s) — click Run`;
+    setTimeout(()=>{ if(!animating) runOptimization(); }, 700);
+  }
+}
+
+function getIconRanked(node, rank){
+  const colors = ['#ff4d00','#ff8c00','#ffb347'];
+  const c = colors[Math.min(rank-1, colors.length-1)];
+  const s = 16;
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:${s}px;height:${s}px;border-radius:50%;background:${c};border:2px solid white;
+      box-shadow:0 0 12px ${c};display:flex;align-items:center;justify-content:center;
+      font-family:monospace;font-size:9px;font-weight:700;color:white">${rank}</div>`,
+    iconSize:[s,s],iconAnchor:[s/2,s/2]
+  });
+}
+
+// ============================================================
+// NODE LIST
+// ============================================================
+function updateNodeList(){
+  const tanks=NODES.filter(n=>n.type==='tank');
+  const activeTanks=tanks.filter(n=>n.active!==false); // default active
+
+  document.getElementById('node-list').innerHTML=NODES.map(n=>{
+    const isSink = selectedSink===n;
+    const srcRank = selectedSources.indexOf(n);
+    const isSource = srcRank >= 0;
+    const isTankActive = n.type==='tank' && n.active!==false;
+    const rankLabel = isSource ? ` <span style="color:#ff8c00;font-size:8px">▲ #${srcRank+1}</span>` : '';
+    const distLabel = isSource&&n._dist ? ` · ${n._dist}km` : '';
+    const tankLabel = n.type==='tank' ? ` <span style="color:${isTankActive?'#00e676':'#4a6070'};font-size:8px">${isTankActive?'● ACTIVE':'○ OFF'}</span>` : '';
+
+    return `<div class="node-card ${n.type} ${isSink||isSource||isTankActive?'selected':''}"
+         onclick="selectNode(NODES[${n.id}],NODES[${n.id}].marker)"
+         style="${n.type==='tank'?'border-left:3px solid '+(isTankActive?'#00e676':'#1a2530'):''}">
+      <div class="node-name">${n.name}${rankLabel}${tankLabel}</div>
+      <div class="node-meta">${n.desc}${distLabel}</div>
+      <div class="node-heat" style="${n.type==='tank'?'color:#00e676':''}">
+        ${n.type==='source'?'▲ '+n.heat+' MW @ '+n.temp+'°C':n.type==='tank'?'🛢 '+n.cap+' MWh buffer':'▼ '+n.heat+' MW @ '+n.temp+'°C'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// OSRM ROAD FETCH
+// ============================================================
+async function fetchRoad(a,b){
+  try{
+    const url=`https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;
+    const r=await fetch(url);
+    const d=await r.json();
+    if(d.routes&&d.routes[0]){
+      return{coords:d.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]),distKm:d.routes[0].distance/1000};
+    }
+  }catch(e){}
+  return{coords:[[a.lat,a.lng],[b.lat,b.lng]],distKm:haverDist(a,b)};
+}
+
+// ============================================================
+// MAIN OPTIMIZATION + WAVEFRONT ANIMATION
+// ============================================================
+async function runOptimization(){
+  if(animating) return;
+  if(!selectedSink){ alert('Pick a 🔵 sink node to get started.'); return; }
+  if(selectedSources.length===0){ alert('No sources available. Try a different sink.'); return; }
+  animating=true;
+  const btn=document.getElementById('run-btn');
+  btn.disabled=true; btn.textContent='⏳ Searching...';
+
+  routeLayer.forEach(l=>{ try{map.removeLayer(l);}catch(e){} });
+  exploredLayer.forEach(l=>{ try{map.removeLayer(l);}catch(e){} });
+  routeLayer=[]; exploredLayer=[];
+
+  const N=NODES.length, road={};
+  const routeColors=['#ff4d00','#ff8c00','#ffb347'];
+  const activeTanks=NODES.filter(n=>n.type==='tank'&&n.active!==false);
+  const searchOrigins=activeTanks.length>0 ? activeTanks : selectedSources;
+
+  // ── FETCH: only the routes we actually need, all in parallel ──
+  setAlgoSteps('fetch');
+  document.getElementById('status-text').textContent='Fetching routes...';
+  const neededPairs=[];
+  for(const src of selectedSources){
+    const tank=activeTanks.length>0
+      ? [...activeTanks].sort((a,b)=>haverDist(src,a)-haverDist(src,b))[0]
+      : null;
+    if(tank){ neededPairs.push([src.id,tank.id],[tank.id,selectedSink.id]); }
+    else { neededPairs.push([src.id,selectedSink.id]); }
+  }
+  // Fire all needed fetches simultaneously
+  const fetchPromise=Promise.all(neededPairs.map(async([i,j])=>{
+    road[`${i}-${j}`]=await fetchRoad(NODES[i],NODES[j]);
+  }));
+
+  // ── WAVEFRONT: starts IMMEDIATELY, no waiting for fetch ──
+  //    Pure straight-line spokes from each tank, fanning out in distance bands
+  setAlgoSteps('search');
+  document.getElementById('status-text').textContent='Searching...';
+
+  // Build a dense set of intermediate waypoints along each spoke for a road-like look
+  // Use a grid of ~60 virtual probe points spread across the map area
+  const bounds=map.getBounds();
+  const probes=[];
+  for(let r=0;r<8;r++) for(let c=0;c<10;c++){
+    probes.push({
+      lat:bounds.getSouth()+(bounds.getNorth()-bounds.getSouth())*(r/7),
+      lng:bounds.getWest()+(bounds.getEast()-bounds.getWest())*(c/9)
+    });
+  }
+
+  for(const origin of searchOrigins){
+    const targets=[...probes,...NODES.filter(n=>n.id!==origin.id)]
+      .map(t=>({t, dist:haverDist(origin,t)}))
+      .sort((a,b)=>a.dist-b.dist);
+
+    const maxDist=targets[targets.length-1].dist;
+    const BANDS=22;
+    // Animate all bands using a single RAF loop — no sleep()
+    await new Promise(resolve=>{
+      let bi=0;
+      const activeLines=new Map(); // target index → leaflet line
+      const committed=[];
+      const bandDuration=55; // ms per band
+      let bandStart=performance.now();
+
+      function tick(now){
+        const elapsed=now-bandStart;
+        const frac=Math.min(1,elapsed/bandDuration);
+
+        // Draw current band growing outward
+        const bandMin=bi/BANDS*maxDist, bandMax=(bi+1)/BANDS*maxDist;
+        const band=targets.filter(({dist})=>dist>=bandMin&&dist<bandMax);
+        const alpha=Math.max(0.07,0.5*(1-bi/BANDS));
+
+        for(const {t} of band){
+          const lat=origin.lat+(t.lat-origin.lat)*frac;
+          const lng=origin.lng+(t.lng-origin.lng)*frac;
+          const key=`${t.lat},${t.lng}`;
+          const existing=activeLines.get(key);
+          if(existing) map.removeLayer(existing);
+          const line=L.polyline([[origin.lat,origin.lng],[lat,lng]],{
+            color:'#00e676',weight:2,opacity:alpha,dashArray:'3 5'
+          }).addTo(map);
+          activeLines.set(key,line);
+        }
+
+        if(frac>=1){
+          // Commit band: replace growing lines with dim static lines
+          for(const {t} of band){
+            const key=`${t.lat},${t.lng}`;
+            const l=activeLines.get(key);
+            if(l){ map.removeLayer(l); activeLines.delete(key); }
+            const dl=L.polyline([[origin.lat,origin.lng],[t.lat,t.lng]],{
+              color:'#00e676',weight:1,opacity:alpha*0.35,dashArray:'2 7'
+            }).addTo(map);
+            exploredLayer.push(dl);
+          }
+          bi++;
+          bandStart=performance.now();
+          document.getElementById('nodes-visited').textContent=
+            `${Math.round(bi/BANDS*100)}% · ${(bi/BANDS*maxDist).toFixed(1)}km`;
+          setAlgoSteps('search',bi,BANDS);
+        }
+
+        if(bi<BANDS) requestAnimationFrame(tick);
+        else {
+          // Clean up any remaining active lines
+          activeLines.forEach(l=>map.removeLayer(l));
+          resolve();
+        }
+      }
+      requestAnimationFrame(tick);
+    });
+  }
+
+  // ── SNAP: wait for OSRM, fade search, draw real roads ──
+  document.getElementById('status-text').textContent='Snapping to roads...';
+  await fetchPromise;
+
+  exploredLayer.forEach(l=>{ try{ l.setStyle({opacity:0.03}); }catch(e){} });
+  setAlgoSteps('draw');
+
+  function dijkstraPath(startId,endId){
+    const INF=1e9,d=Array(N).fill(INF),prev=Array(N).fill(-1);
+    const visited=new Set(); d[startId]=0; const pq=[[0,startId]];
+    while(pq.length){
+      pq.sort((a,b)=>a[0]-b[0]);
+      const[,u]=pq.shift(); if(visited.has(u)) continue; visited.add(u);
+      if(u===endId) break;
+      for(let v=0;v<N;v++){
+        if(v===u||visited.has(v)) continue;
+        const seg=road[`${u}-${v}`];
+        const rd=seg?.distKm??haverDist(NODES[u],NODES[v]);
+        const penalty=seg&&segmentIsObstructed(seg.coords)?1e6:0;
+        const w=rd*(1+rd*0.02+rd*0.0012)+penalty;
+        if(d[u]+w<d[v]){d[v]=d[u]+w;prev[v]=u;pq.push([d[v],v]);}
+      }
+    }
+    const path=[];let cur=endId;
+    while(cur!==-1){path.unshift(cur);cur=prev[cur];}
+    return path;
+  }
+
+  let totalHeatMW=0,totalDistKm=0,totalCo2T=0,totalCostM=0;
+  const allSegs=[];
+
+  for(let si=0;si<selectedSources.length;si++){
+    const src=selectedSources[si];
+    const tank=activeTanks.length>0
+      ? [...activeTanks].sort((a,b)=>haverDist(src,a)-haverDist(src,b))[0]
+      : null;
+    const legs=tank
+      ? [{path:dijkstraPath(src.id,tank.id),color:routeColors[si]},
+         {path:dijkstraPath(tank.id,selectedSink.id),color:'#00e676'}]
+      : [{path:dijkstraPath(src.id,selectedSink.id),color:routeColors[si]}];
+
+    for(const leg of legs){
+      let coords=[],distKm=0;
+      for(let i=0;i<leg.path.length-1;i++){
+        const seg=road[`${leg.path[i]}-${leg.path[i+1]}`];
+        coords=coords.concat(seg?.coords??[[NODES[leg.path[i]].lat,NODES[leg.path[i]].lng],[NODES[leg.path[i+1]].lat,NODES[leg.path[i+1]].lng]]);
+        distKm+=seg?.distKm??0;
+      }
+      allSegs.push({coords,color:leg.color});
+      totalDistKm+=distKm;
+    }
+    const heatMW=Math.min(src.heat,selectedSink.heat);
+    totalHeatMW+=heatMW;
+    totalCo2T+=Math.round(heatMW*1000*8760*EGRID_KG_KWH/1000);
+    totalCostM+=parseFloat(((totalDistKm*1000*1200)/1e6+heatMW*0.18).toFixed(2));
+  }
+
+  // Draw final routes with fast RAF animation
+  for(const seg of allSegs){
+    if(!seg.coords||seg.coords.length<2) continue;
+    routeLayer.push(L.polyline(seg.coords,{color:seg.color,weight:14,opacity:0.12}).addTo(map));
+    await new Promise(resolve=>{
+      const coords=seg.coords,total=coords.length;
+      const dur=Math.min(450,total*3),start=performance.now();
+      let line=null;
+      function frame(now){
+        const t=Math.min(1,(now-start)/dur);
+        const idx=Math.max(2,Math.floor(t*total));
+        if(line) map.removeLayer(line);
+        line=L.polyline(coords.slice(0,idx),{color:seg.color,weight:4,opacity:0.95}).addTo(map);
+        if(t<1) requestAnimationFrame(frame);
+        else{ if(line) map.removeLayer(line); routeLayer.push(L.polyline(coords,{color:seg.color,weight:4,opacity:0.95}).addTo(map)); resolve(); }
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  const costStr=totalCostM.toFixed(1);
+  const payback=(totalCostM/(totalHeatMW*8760*0.04)).toFixed(1);
+  document.getElementById('route-length').textContent=totalDistKm.toFixed(2)+' km';
+  document.getElementById('heat-recovered').textContent=totalHeatMW.toFixed(1)+' MW';
+  document.getElementById('total-heat').textContent=totalHeatMW.toFixed(1)+' MW';
+  document.getElementById('total-savings').textContent=totalCo2T.toLocaleString()+' t/yr';
+  document.getElementById('total-cost').textContent='$'+costStr+'M';
+  document.getElementById('status-text').textContent=`${selectedSources.length} route(s) found ✓`;
+  setAlgoSteps('done');
+  updateScheduleChart(); renderEmChart();
+  renderProjects(totalHeatMW,totalDistKm,totalCo2T,costStr,payback);
+  renderBrief(totalDistKm,totalHeatMW,totalCo2T,costStr,payback);
+  animating=false; btn.disabled=false; btn.textContent='⚡ Run Optimization';
+}
+// ── Remove old buildLocalGrid (no longer needed) ──
+
+// ============================================================
+// ALGO STEPS PANEL
+// ============================================================
+function setAlgoSteps(phase,waveP=0,waveT=1){
+  const pct=waveT>0?Math.round((waveP/waveT)*100):0;
+  const S=[
+    {l:'FETCH OSRM ROAD GRAPH',          done:phase!=='fetch', active:phase==='fetch'},
+    {l:'LOAD NREL COMSTOCK PROFILES',    done:['search','draw','done'].includes(phase)},
+    {l:'LOAD CAMBIUM SRMER RATES',       done:['search','draw','done'].includes(phase)},
+    {l:`WAVEFRONT EXPAND (${pct}%)`,     done:['draw','done'].includes(phase), active:phase==='search'},
+    {l:'WEIGHT: PIPE COST $1200/m',      done:['draw','done'].includes(phase), active:phase==='search'},
+    {l:'WEIGHT: ROW FRICTION + LOSS',    done:['draw','done'].includes(phase)},
+    {l:'HEAT PUMP COP ≈ 3.5 (assumed)',  done:['draw','done'].includes(phase)},
+    {l:'RECONSTRUCT OPTIMAL PATH',       done:['draw','done'].includes(phase), active:phase==='draw'},
+    {l:'CO₂ SAVINGS · eGRID ILSOW',     done:phase==='done'},
+    {l:'STAKEHOLDER BRIEF GENERATED',    done:phase==='done'},
+  ];
+  document.getElementById('algo-steps').innerHTML=S.map(s=>`
+    <div class="algo-step ${s.done?'done':s.active?'active':''}">
+      <div class="algo-step-dot"></div>${s.l}
+    </div>`).join('');
+}
+
+// ============================================================
+// CHARTS
+// ============================================================
+function initCharts(){
+  const hrs=Array.from({length:24},(_,i)=>`${i}:00`);
+  schedChart=new Chart(document.getElementById('schedule-chart').getContext('2d'),{
+    type:'line',
+    data:{labels:hrs,datasets:[
+      {label:'DC Heat Supply',data:NREL_DC_SHAPE.map(v=>6.5*v),borderColor:'#ff4d00',backgroundColor:'rgba(255,77,0,0.07)',fill:true,tension:0.4,pointRadius:0,borderWidth:2},
+      {label:'Building Demand',data:NREL_OFFICE_SHAPE.map(v=>5.2*v),borderColor:'#00c9ff',backgroundColor:'rgba(0,201,255,0.07)',fill:true,tension:0.4,pointRadius:0,borderWidth:2},
+    ]},
+    options:cOpts()
+  });
+  renderEmChart();
+}
+
+function renderEmChart(){
+  if(emChart) emChart.destroy();
+  const hrs=Array.from({length:24},(_,i)=>`${i}`);
+  emChart=new Chart(document.getElementById('emissions-chart').getContext('2d'),{
+    type:'bar',
+    data:{labels:hrs,datasets:[{
+      label:'Marginal CO₂ lbs/MWh',
+      data:CAMBIUM_SRMER,
+      backgroundColor:CAMBIUM_SRMER.map(v=>v>460?'rgba(255,77,0,0.75)':v>420?'rgba(255,210,0,0.65)':'rgba(0,230,118,0.55)'),
+      borderWidth:0,borderRadius:1
+    }]},
+    options:{...cOpts(),plugins:{legend:{labels:{color:'#4a6070',font:{family:'Space Mono',size:8},boxWidth:10}}}}
+  });
+}
+
+function updateScheduleChart(){
+  if(!schedChart||!selectedSink) return;
+  const src=selectedSources[0];
+  const srcShape=src&&src.temp>42?NREL_DC_SHAPE:NREL_OFFICE_SHAPE;
+  const srcHeat=src?src.heat:6;
+  schedChart.data.datasets[0].data=srcShape.map(v=>srcHeat*v);
+  schedChart.data.datasets[1].data=NREL_OFFICE_SHAPE.map(v=>selectedSink.heat*v);
+  schedChart.update();
+}
+
+function cOpts(){
+  return{responsive:true,maintainAspectRatio:true,
+    plugins:{legend:{labels:{color:'#4a6070',font:{family:'Space Mono',size:8},boxWidth:10}}},
+    scales:{
+      x:{ticks:{color:'#4a6070',font:{family:'Space Mono',size:7},maxTicksLimit:8},grid:{color:'#1a2530'}},
+      y:{ticks:{color:'#4a6070',font:{family:'Space Mono',size:8}},grid:{color:'#1a2530'}}
+    }};
+}
+
+// ============================================================
+// MODE OVERLAYS
+// ============================================================
+function setMode(m){
+  mode=m;
+  ['route','heat','emissions'].forEach(id=>document.getElementById(`btn-${id}`).classList.toggle('active',id===m));
+  if(heatLayer){map.removeLayer(heatLayer);heatLayer=null;}
+  if(emLayer){map.removeLayer(emLayer);emLayer=null;}
+  if(m==='heat') renderHeatmap();
+  if(m==='emissions') renderEmissionsOverlay();
+}
+
+function renderHeatmap(){
+  heatLayer=L.layerGroup();
+  NODES.forEach(n=>{
+    if(n.type==='tank'){
+      // tanks: green radial glow sized by storage capacity
+      const r=(n.cap||30)*18;
+      [[r,'rgba(0,230,118,0.07)'],[r*0.5,'rgba(0,230,118,0.14)'],[r*0.2,'#00e676']].forEach(([rad,col],i)=>{
+        L.circle([n.lat,n.lng],{radius:rad,color:'transparent',fillColor:col,fillOpacity:i===2?0.55:0.25}).addTo(heatLayer);
+      });
+      return;
+    }
+    const heatVal=n.heat||1;
+    const c=n.type==='source'?'#ff4d00':'#00c9ff';
+    const oc=n.type==='source'?'rgba(255,77,0,0.12)':'rgba(0,201,255,0.09)';
+    const r=heatVal*700;
+    [[r,oc],[r*0.5,oc],[r*0.18,c]].forEach(([rad,col],i)=>{
+      L.circle([n.lat,n.lng],{radius:rad,color:'transparent',fillColor:col,fillOpacity:i===2?0.65:0.22}).addTo(heatLayer);
+    });
+  });
+  heatLayer.addTo(map);
+}
+
+function renderEmissionsOverlay(){
+  emLayer=L.layerGroup();
+  const hour=new Date().getHours();
+  // Show per-hour marginal rate for each node with a gradient circle
+  NODES.forEach(n=>{
+    if(n.type==='tank') return;
+    const heatVal=n.heat||1;
+    const hourRate=CAMBIUM_SRMER[hour];
+    const norm=(hourRate-350)/(500-350); // 0=clean, 1=dirty
+    // sources show emission intensity, sinks show demand urgency
+    let fillColor, r;
+    if(n.type==='source'){
+      // orange=high emission displacing, green=clean grid hour
+      fillColor=norm>0.65?'rgba(255,77,0,0.28)':norm>0.35?'rgba(255,210,0,0.22)':'rgba(0,230,118,0.18)';
+      r=heatVal*800;
+    } else {
+      // sinks: show heating demand — always blue but size by heat load
+      fillColor='rgba(0,180,255,0.15)';
+      r=heatVal*600;
+    }
+    [r, r*0.45].forEach((rad,i)=>{
+      L.circle([n.lat,n.lng],{radius:rad,color:'transparent',fillColor:fillColor,fillOpacity:i===0?1:0.5}).addTo(emLayer);
+    });
+    // Label the current marginal rate on map
+    L.marker([n.lat,n.lng],{icon:L.divIcon({
+      className:'',
+      html:`<div style="font-family:monospace;font-size:8px;color:${norm>0.65?'#ff4d00':norm>0.35?'#ffd200':'#00e676'};
+        background:rgba(8,12,15,0.85);padding:2px 4px;border-radius:2px;white-space:nowrap;margin-top:12px">
+        ${hourRate} lbs/MWh</div>`,
+      iconAnchor:[0,-8]
+    })}).addTo(emLayer);
+  });
+  emLayer.addTo(map);
+}
+
+// ============================================================
+// PROJECTS
+// ============================================================
+function renderProjects(heatMW,distKm,co2T,costM,payback){
+  document.getElementById('projects-list').innerHTML=[
+    {rank:'#1 Recommended',name:`${selectedSource.name} → ${selectedSink.name}`,
+      co2:`${co2T.toLocaleString()} t/yr`,cost:`$${costM}M`,pay:`~${payback} yrs`,infra:`${distKm.toFixed(1)} km pipe`},
+    {rank:'#2 Add Thermal Storage',name:'200 MWh Molten Salt Buffer',
+      co2:`${Math.round(co2T*0.12).toLocaleString()} t/yr addl`,cost:`$${(heatMW*0.14).toFixed(1)}M`,pay:`${(payback*1.5).toFixed(1)} yrs`,infra:'Peak shift storage'},
+    {rank:'#3 Phase 2 Expansion',name:NODES.filter(n=>n.type==='sink'&&n!==selectedSink)[0]?.name??'Next District',
+      co2:`${Math.round(co2T*1.5).toLocaleString()} t/yr`,cost:`$${(costM*1.9).toFixed(1)}M`,pay:`${(payback*2.1).toFixed(1)} yrs`,infra:'Network expansion'},
+  ].map(p=>`
+    <div class="project-card">
+      <div class="project-rank">${p.rank}</div>
+      <div class="project-name">${p.name}</div>
+      <div class="project-metrics">
+        <div class="metric"><div class="metric-val">${p.co2}</div><div class="metric-label">CO₂ Saved</div></div>
+        <div class="metric"><div class="metric-val">${p.cost}</div><div class="metric-label">Est. Cost</div></div>
+        <div class="metric"><div class="metric-val">${p.pay}</div><div class="metric-label">Payback</div></div>
+        <div class="metric"><div class="metric-val" style="color:var(--accent2)">${p.infra}</div><div class="metric-label">Infrastructure</div></div>
+      </div>
+    </div>`).join('');
+}
+
+// ============================================================
+// STAKEHOLDER BRIEF
+// ============================================================
+function renderBrief(distKm,heatMW,co2T,costM,payback){
+  const cop=3.5;
+  const src=selectedSources[0]||{name:'Multiple sources',temp:42};
+  const liftC=selectedSink?(selectedSink.temp-src.temp):0;
+  document.getElementById('brief-area').innerHTML=`<div class="brief-box">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HEATROUTER — DECISION SUPPORT BRIEF
+⚠ NON-AUTHORITATIVE · No engineering stamp
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROJECT
+  Sources: ${selectedSources.map(s=>s.name).join(', ')}
+  Sink   : ${selectedSink?.name||'—'}
+  Route  : ${distKm.toFixed(2)} km (OSRM road-following)
+  Temp lift: ${liftC}°C source→supply
+
+TECHNO-ECONOMICS (proxies — verify before use)
+  Heat recovered  : ${heatMW.toFixed(1)} MW peak
+  HP COP assumed  : ${cop} (lift-dependent, ±0.5)
+  Pipe cost proxy : $1,200/m installed trench
+  Est. capex      : $${costM}M
+  Simple payback  : ~${payback} years @ $40/MWh savings
+
+EMISSIONS (EPA eGRID 2022 · ILSOW)
+  Avoided CO₂     : ${co2T.toLocaleString()} t/yr
+  eGRID factor    : ${EGRID_LBS_MWH} lbs/MWh (0.175 kg/kWh)
+  Best dispatch   : 00:00–06:00 (Cambium SRMER lowest)
+  Worst dispatch  : 18:00–21:00 (peak marginal rates)
+
+DATA SOURCES
+  ✓ OSRM / OpenStreetMap (road routing)
+  ✓ NREL ComStock EULP (hourly load shapes)
+  ✓ EPA eGRID 2022 ILSOW (annual emission factor)
+  ✓ Cambium 2022 SRMER (marginal hourly rates)
+  ○ EIA-930 (live grid ops — not yet integrated)
+  ○ Chicago energy benchmarking (optional calibration)
+
+PERMITTING CHECKLIST
+  □ CDOT right-of-way permit (pipe trenching)
+  □ Utility franchise coordination (ComEd, Peoples Gas)
+  □ IEPA heat discharge notification
+  □ Chicago Dept. of Buildings — mechanical permit
+  □ Data sharing agreement (building telemetry)
+
+RISK REGISTER
+  HIGH  Temp lift may require larger HP → cost ↑
+  MED   ROW delays in dense downtown (6–18 mo)
+  MED   Trenching cost variance ±40% (site conditions)
+  LOW   eGRID factor shifts as grid decarbonizes
+  LOW   Seasonal COP variance (±0.5)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+For screening only · Commission PE-stamped study
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>`;
+}
+
+// ============================================================
+// RESET
+// ============================================================
+function resetAll(){
+  if(animating) return;
+  [...routeLayer,...exploredLayer].forEach(l=>{ try{map.removeLayer(l);}catch(e){} });
+  routeLayer=[]; exploredLayer=[];
+  if(heatLayer){map.removeLayer(heatLayer);heatLayer=null;}
+  if(emLayer){map.removeLayer(emLayer);emLayer=null;}
+  selectedSources.forEach(s=>s.marker&&s.marker.setIcon(getIcon(s,false)));
+  selectedSources=[]; selectedSource=null;
+  if(selectedSink){ selectedSink.marker&&selectedSink.marker.setIcon(getIcon(selectedSink,false)); selectedSink=null; }
+  // Reset tanks to active (default)
+  NODES.filter(n=>n.type==='tank').forEach(n=>{ n.active=true; n.marker&&n.marker.setIcon(getIcon(n,false)); });
+  NODES.filter(n=>n.type!=='tank').forEach(n=>n.marker&&n.marker.setIcon(getIcon(n,false)));
+  clearObstructions();
+  if(obstructMode) toggleObstructMode();
+  document.getElementById('nodes-visited').textContent='0 nodes';
+  document.getElementById('route-length').textContent='— km';
+  document.getElementById('heat-recovered').textContent='— MW';
+  document.getElementById('status-text').textContent='Click any 🔵 sink to auto-route';
+  document.getElementById('total-heat').textContent='— MW';
+  document.getElementById('total-savings').textContent='—';
+  document.getElementById('total-cost').textContent='$—M';
+  document.getElementById('algo-steps').innerHTML='<div class="select-hint">Click any blue sink node — sources are auto-selected.</div>';
+  document.getElementById('projects-list').innerHTML='<div class="select-hint">Run optimization to generate recommendations.</div>';
+  document.getElementById('brief-area').innerHTML='<div class="select-hint">Run optimization to generate auto-brief.</div>';
+  updateNodeList();
+}
+
+// ============================================================
+// STARTUP: draw static source→tank pipes on load
+// ============================================================
+let startupPipes=[]; // permanent background layer
+
+async function drawStartupPipes(){
+  const sources=NODES.filter(n=>n.type==='source');
+  const tanks=NODES.filter(n=>n.type==='tank'&&n.active!==false);
+  if(tanks.length===0) return;
+
+  for(const src of sources){
+    // Find nearest active tank
+    const tank=[...tanks].sort((a,b)=>haverDist(src,a)-haverDist(src,b))[0];
+    const seg=await fetchRoad(src,tank);
+    // Draw as a dim green dashed pipe (always visible in background)
+    const glow=L.polyline(seg.coords,{color:'#00e676',weight:8,opacity:0.06}).addTo(map);
+    const pipe=L.polyline(seg.coords,{color:'#00e676',weight:2,opacity:0.35,dashArray:'6 8'}).addTo(map);
+    startupPipes.push(glow,pipe);
+    // Animated "heat packet" dot travelling along the pipe
+    spawnHeatPacket(seg.coords,'#00e676');
+  }
+}
+
+function spawnHeatPacket(coords, color){
+  if(coords.length<2) return;
+  let idx=0;
+  const dot=L.circleMarker(coords[0],{radius:4,color:color,fillColor:color,fillOpacity:0.9,weight:0}).addTo(map);
+  startupPipes.push(dot);
+  const speed=Math.max(1,Math.floor(coords.length/60));
+  function step(){
+    idx+=speed;
+    if(idx>=coords.length){ idx=0; } // loop
+    dot.setLatLng(coords[idx]);
+    // schedule next frame — roughly 40fps
+    setTimeout(step, 25);
+  }
+  setTimeout(step, Math.random()*2000); // stagger starts
+}
+
+window.onload=async()=>{
+  initMap();
+  updateNodeList();
+  // Draw always-on source→tank pipes after a short delay
+  setTimeout(drawStartupPipes, 800);
+};
+</script>
+</body>
+</html>
