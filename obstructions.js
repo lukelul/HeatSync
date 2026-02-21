@@ -4,13 +4,19 @@ let obstructClickA = null;
 let obstructMarkerA = null;
 let obstructions = [];
 let blockedSet = new Set();
+let _skipMapClick = false;
 
 function toggleObstructMode() {
+  if (typeof map === 'undefined' || !map) {
+    console.error('[HeatRouter] toggleObstructMode: map not initialized');
+    return;
+  }
   obstructMode = !obstructMode;
   const btn = document.getElementById('btn-obstruct');
   const hint = document.getElementById('obs-hint');
   btn.classList.toggle('active', obstructMode);
-  btn.textContent = obstructMode ? '🚫 Click road...' : '🚫 Block Road';
+  btn.textContent = obstructMode ? '🚫 Painting...' : '🚫 Block Road';
+  btn.style.background = obstructMode ? 'rgba(255,0,64,.18)' : '';
   map.getContainer().style.cursor = obstructMode ? 'crosshair' : '';
   hint.style.display = obstructMode ? 'block' : 'none';
   hint.textContent = 'Click start point of road to block';
@@ -24,6 +30,7 @@ function toggleObstructMode() {
 }
 
 function handleObstructClick(e) {
+  if (_skipMapClick) { _skipMapClick = false; return; }
   if (!obstructMode) return;
   const hint = document.getElementById('obs-hint');
   if (!obstructClickA) {
@@ -35,10 +42,10 @@ function handleObstructClick(e) {
       fillOpacity: 1,
       weight: 2
     }).addTo(map);
-    hint.textContent = 'Click end point of road to block';
+    hint.textContent = 'Now click end point of road to block';
   } else {
     const b = e.latlng;
-    hint.textContent = 'Fetching road...';
+    hint.textContent = 'Fetching road segment...';
     fetchObstructionRoad(obstructClickA, b);
     if (obstructMarkerA) {
       map.removeLayer(obstructMarkerA);
@@ -49,42 +56,52 @@ function handleObstructClick(e) {
 }
 
 async function fetchObstructionRoad(a, b) {
-  // Use OSRM match API — snaps to road without one-way routing
-  const url = `https://router.project-osrm.org/match/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&radiuses=50;50`;
+  const hint = document.getElementById('obs-hint');
+  const matchUrl = `https://router.project-osrm.org/match/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&radiuses=50;50`;
   try {
-    const r = await fetch(url);
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 8000);
+    const r = await fetch(matchUrl, { signal: controller.signal });
+    clearTimeout(tid);
     const d = await r.json();
     if (d.code === 'Ok' && d.matchings?.[0]) {
-      const coords = d.matchings[0].geometry.coordinates.map(c => [c[1], c[0]]);
-      addObstruction(coords);
-      document.getElementById('obs-hint').textContent = 'Click start point of road to block';
+      addObstruction(d.matchings[0].geometry.coordinates.map(c => [c[1], c[0]]));
+      hint.textContent = obstructMode ? 'Click start point of road to block' : '';
+      hint.style.display = obstructMode ? 'block' : 'none';
       return;
     }
-  } catch(e) {}
-  // Fallback: try route API both directions, pick shorter
+  } catch (e) {
+    if (e.name === 'AbortError') console.warn('[HeatRouter] Obstruction OSRM match timed out');
+  }
   for (const [p, q] of [[a, b], [b, a]]) {
-    const url2 = `https://router.project-osrm.org/route/v1/driving/${p.lng},${p.lat};${q.lng},${q.lat}?overview=full&geometries=geojson`;
+    const routeUrl = `https://router.project-osrm.org/route/v1/driving/${p.lng},${p.lat};${q.lng},${q.lat}?overview=full&geometries=geojson`;
     try {
-      const r = await fetch(url2);
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 8000);
+      const r = await fetch(routeUrl, { signal: controller.signal });
+      clearTimeout(tid);
       const d = await r.json();
       if (d.code === 'Ok' && d.routes?.[0] && d.routes[0].distance < haverDist(a, b) * 4000) {
         addObstruction(d.routes[0].geometry.coordinates.map(c => [c[1], c[0]]));
-        document.getElementById('obs-hint').textContent = 'Click start point of road to block';
+        hint.textContent = obstructMode ? 'Click start point of road to block' : '';
+        hint.style.display = obstructMode ? 'block' : 'none';
         return;
       }
-    } catch(e) {}
+    } catch (e) {}
   }
-  document.getElementById('obs-hint').textContent = 'Failed — try closer points';
+  addObstruction([[a.lat, a.lng], [b.lat, b.lng]]);
+  hint.textContent = obstructMode ? 'Road not found — straight-line block placed' : '';
+  hint.style.display = obstructMode ? 'block' : 'none';
 }
 
 function addObstruction(coords) {
-  const line = L.polyline(coords, {color: '#ff0040', weight: 18, opacity: .85}).addTo(map);
-  const glow = L.polyline(coords, {color: '#ff0040', weight: 44, opacity: .15}).addTo(map);
+  const line = L.polyline(coords, {color: '#ff0040', weight: 5, opacity: .85, interactive: true}).addTo(map);
+  const glow = L.polyline(coords, {color: '#ff0040', weight: 14, opacity: .15, interactive: true}).addTo(map);
   const obs = {coords, line, glow};
-  line.on('click', () => removeObstruction(obs));
-  glow.on('click', () => removeObstruction(obs));
+  const onClick = () => { _skipMapClick = true; removeObstruction(obs); };
+  line.on('click', onClick);
+  glow.on('click', onClick);
   obstructions.push(obs);
-  // Clear ALL cached routes so they get re-evaluated against new obstruction
   Object.keys(RC).forEach(k => delete RC[k]);
   rebuildBlockedSet();
   document.getElementById('block-count').textContent = obstructions.length;
@@ -110,24 +127,27 @@ function clearObstructions() {
   document.getElementById('block-count').textContent = '0';
 }
 
-// Build set of rounded coord keys from all obstructions
 function rebuildBlockedSet() {
   blockedSet.clear();
   for (const obs of obstructions) {
     for (const c of obs.coords) {
-      // Round to 5 decimal places (~1m precision)
-      blockedSet.add(Math.round(c[0] * 1e5) + ',' + Math.round(c[1] * 1e5));
+      const rLat = Math.round(c[0] * 1e4);
+      const rLng = Math.round(c[1] * 1e4);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          blockedSet.add((rLat + dx) + ',' + (rLng + dy));
+        }
+      }
     }
   }
 }
 
-// Check if a route shares any coordinates with blocked roads
 function routeIsBlocked(coords) {
   if (!blockedSet.size) return false;
   for (const c of coords) {
-    if (blockedSet.has(Math.round(c[0] * 1e5) + ',' + Math.round(c[1] * 1e5))) return true;
+    const key = Math.round(c[0] * 1e4) + ',' + Math.round(c[1] * 1e4);
+    if (blockedSet.has(key)) return true;
   }
-  // Also check segment intersections for routes that cross between blocked points
   for (const obs of obstructions) {
     for (let i = 0; i < coords.length - 1; i++) {
       for (let j = 0; j < obs.coords.length - 1; j++) {
@@ -146,5 +166,5 @@ function segsIntersect(p1, p2, p3, p4) {
   const dx = p3[1] - p1[1], dy = p3[0] - p1[0];
   const t = (dx * d2y - dy * d2x) / cross;
   const u = (dx * d1y - dy * d1x) / cross;
-  return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99;
+  return t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999;
 }

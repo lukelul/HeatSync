@@ -46,6 +46,7 @@ function selectNode(n, m) {
   selectedSource = selectedSources[0] || null;
   updateNodeList();
   document.getElementById('status-text').textContent = `Auto-selected ${selectedSources.length} source(s)`;
+  console.log('[HeatRouter] sink selected, scheduling runOptimization in 600ms');
   setTimeout(() => {
     if (!animating) runOptimization();
   }, 600);
@@ -94,6 +95,7 @@ function resetAll() {
   NODES.filter(n => n.type !== 'tank').forEach(n => n.marker?.setIcon(getIcon(n, false)));
   clearObstructions();
   if (obstructMode) toggleObstructMode();
+  hideRouteError();
   document.getElementById('nodes-visited').textContent = '0';
   document.getElementById('route-length').textContent = '— km';
   document.getElementById('heat-recovered').textContent = '— MW';

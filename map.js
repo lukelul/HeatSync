@@ -3,6 +3,7 @@ let map;
 let routeLayer = [];
 let exploredLayer = [];
 let startupPipes = [];
+let _pipesActive = false;
 
 function initMap() {
   map = L.map('map', {zoomControl: false}).setView([41.888, -87.638], 14);
@@ -62,7 +63,12 @@ function renderNodes() {
   });
 }
 
+function clearStartupPipeTimers() {
+  _pipesActive = false;
+}
+
 async function drawStartupPipes() {
+  _pipesActive = true;
   const sources = NODES.filter(n => n.type === 'source');
   const tanks = NODES.filter(n => n.type === 'tank' && n.active !== false);
   if (!tanks.length) return;
@@ -83,6 +89,7 @@ async function drawStartupPipes() {
     startupPipes.push(dot);
     const spd = Math.max(1, Math.floor(seg.coords.length / 60));
     (function step() {
+      if (!_pipesActive) return;
       idx = (idx + spd) % seg.coords.length;
       dot.setLatLng(seg.coords[idx]);
       setTimeout(step, 25);
