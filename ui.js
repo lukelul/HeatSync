@@ -1,3 +1,33 @@
+// Collapsible panel sections
+(function initCollapsible() {
+  document.addEventListener('click', (e) => {
+    const title = e.target.closest('.panel-title');
+    if (!title) return;
+    const content = title.nextElementSibling;
+    if (!content || content.classList.contains('panel-title')) return;
+    title.classList.toggle('collapsed');
+    content.style.display = title.classList.contains('collapsed') ? 'none' : '';
+  });
+})();
+
+function collapseSection(contentEl) {
+  if (!contentEl) return;
+  const title = contentEl.previousElementSibling;
+  if (title && title.classList.contains('panel-title') && !title.classList.contains('collapsed')) {
+    title.classList.add('collapsed');
+    contentEl.style.display = 'none';
+  }
+}
+
+function expandSection(contentEl) {
+  if (!contentEl) return;
+  const title = contentEl.previousElementSibling;
+  if (title && title.classList.contains('panel-title') && title.classList.contains('collapsed')) {
+    title.classList.remove('collapsed');
+    contentEl.style.display = '';
+  }
+}
+
 // UI and node selection functions
 let selectedSources = [];
 let selectedSink = null;
@@ -17,9 +47,14 @@ function updateCityHeader() {
   const totalSinkHeat = sinks.reduce((s, n) => s + (n.heat || 0), 0);
   const recoverable = Math.min(totalSourceHeat, totalSinkHeat);
 
+  const egridEl = document.getElementById('egrid-val');
+  const egridLabel = document.getElementById('egrid-label');
+  if (egridEl) egridEl.textContent = EGRID ? EGRID + ' lbs/MWh' : '— lbs/MWh';
+  if (egridLabel) egridLabel.textContent = EGRID ? 'eGRID' : 'eGRID (no data)';
+
   if (NODES.length > 0) {
     document.getElementById('total-heat').textContent = recoverable.toFixed(1) + ' MW';
-    if (recoverable > 0) {
+    if (recoverable > 0 && EGRID_KG > 0) {
       const co2Tons = Math.round(recoverable * 1000 * 8760 * EGRID_KG / 1000);
       document.getElementById('total-savings').textContent = co2Tons.toLocaleString() + ' t/yr';
       const distEstKm = sources.length && sinks.length

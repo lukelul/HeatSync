@@ -34,12 +34,12 @@ INITIAL_TEMPS = {
     2:  35.0,   # Merchandise Mart           (sink)
     3:  38.0,   # River North District       (sink)
     4:  68.0,   # Kinzie Industrial Corr.    (source)
-    5:  32.0,   # Goose Island Residential   (sink)
-    6:  40.0,   # Northwestern Chicago       (sink)
-    7:  58.0,   # Google Chicago HQ          (source)
-    8:  48.0,   # Tank A — West Loop         (tank)
-    9:  46.0,   # Tank B — River North       (tank)
-    10: 47.0,   # Tank C — Goose Island      (tank)
+    # 5:  32.0,   # Goose Island Residential   (sink)
+    # 6:  40.0,   # Northwestern Chicago       (sink)
+    # 7:  58.0,   # Google Chicago HQ          (source)
+    # 8:  48.0,   # Tank A — West Loop         (tank)
+    # 9:  46.0,   # Tank B — River North       (tank)
+    # 10: 47.0,   # Tank C — Goose Island      (tank)
 }
 
 # Per-tick heat generation: positive = produces heat, negative = consumes heat
@@ -49,12 +49,12 @@ HEAT_GEN = {
     2: -0.5,    # commercial building heat demand
     3: -0.4,    # mixed residential demand
     4:  0.6,    # industrial waste heat
-    5: -0.3,    # residential demand
-    6: -0.4,    # university campus demand
-    7:  0.2,    # corporate DC waste heat
-    8:  0.0,    # tank (passive)
-    9:  0.0,    # tank (passive)
-    10: 0.0,    # tank (passive)
+    # 5: -0.3,    # residential demand
+    # 6: -0.4,    # university campus demand
+    # 7:  0.2,    # corporate DC waste heat
+    # 8:  0.0,    # tank (passive)
+    # 9:  0.0,    # tank (passive)
+    # 10: 0.0,    # tank (passive)
 }
 
 

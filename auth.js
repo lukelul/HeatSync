@@ -29,6 +29,9 @@ function initAuth() {
   window.auth.onAuthStateChanged(async (user) => {
     AppState.set('user', user);
     if (user) {
+      Router.init();
+      Router._onRoute();
+
       await loadCities();
       const cities = AppState.cities;
       if (cities.length > 0) {
@@ -39,8 +42,6 @@ function initAuth() {
       } else {
         await _showWelcomeFlow();
       }
-      Router.init();
-      Router._onRoute();
     } else {
       AppState.set('selectedCityId', null);
       AppState.set('selectedCityDoc', null);

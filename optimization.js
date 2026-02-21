@@ -186,6 +186,10 @@ async function runOptimization() {
     clearStartupPipes();
     drawStartupPipes();
 
+    collapseSection(document.getElementById('algo-steps'));
+    collapseSection(document.getElementById('brief-area'));
+    expandSection(document.getElementById('projects-list'));
+
   } catch (err) {
     console.error('[HeatRouter] runOptimization error:', err);
     showRouteError(

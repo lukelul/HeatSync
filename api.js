@@ -16,7 +16,10 @@ function startApiPolling() {
 // One tick of the closed loop: read → decide → command → display
 async function closedLoopTick() {
   const nodes = await refreshTemps();
-  if (!nodes || !nodes.length) return;
+  if (!nodes || !nodes.length) {
+    updateLivePanel(null, []);
+    return;
+  }
 
   const routes = computeHeatRoutes(nodes);
   _lastRoutes = routes;

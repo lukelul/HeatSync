@@ -53,7 +53,11 @@ function renderHeatmap() {
 function renderEmOverlay() {
   emLayer = L.layerGroup();
   const hr = new Date().getHours();
-  const rate = CAMBIUM[hr];
+  const rate = CAMBIUM[hr] || 0;
+  if (rate === 0) {
+    emLayer.addTo(map);
+    return;
+  }
   const norm = (rate - 350) / 150;
   NODES.forEach(n => {
     if (n.type === 'tank') return;

@@ -1,7 +1,7 @@
-// Configuration and constants
+// Configuration and constants — populated at runtime via API
 const NODES = [];
-const NREL_DC = [.88,.87,.87,.86,.86,.87,.89,.92,.96,.98,.99,1,.99,1,.99,.98,.97,.96,.95,.93,.92,.91,.9,.89];
-const NREL_OFF = [.28,.25,.23,.22,.23,.27,.38,.55,.72,.85,.91,.93,.92,.93,.92,.9,.85,.75,.62,.5,.42,.38,.35,.31];
-const CAMBIUM = [410,398,385,371,362,358,365,388,425,448,461,468,472,470,465,458,450,462,480,492,485,465,445,428];
-const EGRID = 386;
-const EGRID_KG = .175;
+const NREL_DC = new Array(24).fill(0);
+const NREL_OFF = new Array(24).fill(0);
+const CAMBIUM = new Array(24).fill(0);
+let EGRID = 0;
+let EGRID_KG = 0;
