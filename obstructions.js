@@ -105,6 +105,7 @@ function addObstruction(coords) {
   Object.keys(RC).forEach(k => delete RC[k]);
   rebuildBlockedSet();
   document.getElementById('block-count').textContent = obstructions.length;
+  _refreshPipesAfterBlockChange();
 }
 
 function removeObstruction(obs) {
@@ -114,6 +115,7 @@ function removeObstruction(obs) {
   Object.keys(RC).forEach(k => delete RC[k]);
   rebuildBlockedSet();
   document.getElementById('block-count').textContent = obstructions.length;
+  _refreshPipesAfterBlockChange();
 }
 
 function clearObstructions() {
@@ -125,36 +127,71 @@ function clearObstructions() {
   Object.keys(RC).forEach(k => delete RC[k]);
   rebuildBlockedSet();
   document.getElementById('block-count').textContent = '0';
+  _refreshPipesAfterBlockChange();
+}
+
+function _refreshPipesAfterBlockChange() {
+  if (typeof clearStartupPipes === 'function') {
+    try { clearStartupPipes(); } catch(e) {}
+  }
+  setTimeout(() => {
+    if (typeof drawStartupPipes === 'function') drawStartupPipes();
+  }, 300);
 }
 
 function rebuildBlockedSet() {
   blockedSet.clear();
+  const STEP = 0.00008; // ~9m interpolation step
+  const R = 1; // ±1 grid cell buffer (~11m)
   for (const obs of obstructions) {
-    for (const c of obs.coords) {
-      const rLat = Math.round(c[0] * 1e4);
-      const rLng = Math.round(c[1] * 1e4);
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          blockedSet.add((rLat + dx) + ',' + (rLng + dy));
+    const oc = obs.coords;
+    for (let s = 0; s < oc.length; s++) {
+      _addGridPoint(oc[s][0], oc[s][1], R);
+      if (s < oc.length - 1) {
+        const dLat = oc[s + 1][0] - oc[s][0];
+        const dLng = oc[s + 1][1] - oc[s][1];
+        const len = Math.sqrt(dLat * dLat + dLng * dLng);
+        const steps = Math.ceil(len / STEP);
+        for (let k = 1; k < steps; k++) {
+          const frac = k / steps;
+          _addGridPoint(oc[s][0] + dLat * frac, oc[s][1] + dLng * frac, R);
         }
       }
     }
   }
 }
 
-function routeIsBlocked(coords) {
-  if (!blockedSet.size) return false;
-  for (const c of coords) {
-    const key = Math.round(c[0] * 1e4) + ',' + Math.round(c[1] * 1e4);
-    if (blockedSet.has(key)) return true;
+function _addGridPoint(lat, lng, r) {
+  const rLat = Math.round(lat * 1e4);
+  const rLng = Math.round(lng * 1e4);
+  for (let dx = -r; dx <= r; dx++) {
+    for (let dy = -r; dy <= r; dy++) {
+      blockedSet.add((rLat + dx) + ',' + (rLng + dy));
+    }
   }
+}
+
+function routeIsBlocked(coords) {
+  if (!obstructions.length) return false;
+
+  // Fast grid check — obstruction coords are densified so this catches collinear routes
+  if (blockedSet.size) {
+    for (const c of coords) {
+      const key = Math.round(c[0] * 1e4) + ',' + Math.round(c[1] * 1e4);
+      if (blockedSet.has(key)) return true;
+    }
+  }
+
+  // Segment intersection check for routes that cross an obstruction
   for (const obs of obstructions) {
+    const oc = obs.coords;
     for (let i = 0; i < coords.length - 1; i++) {
-      for (let j = 0; j < obs.coords.length - 1; j++) {
-        if (segsIntersect(coords[i], coords[i+1], obs.coords[j], obs.coords[j+1])) return true;
+      for (let j = 0; j < oc.length - 1; j++) {
+        if (segsIntersect(coords[i], coords[i + 1], oc[j], oc[j + 1])) return true;
       }
     }
   }
+
   return false;
 }
 

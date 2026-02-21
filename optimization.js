@@ -183,9 +183,7 @@ async function runOptimization() {
     renderEmChart();
     renderProjects(tHeat, tDist, tCO2, cs, pb);
     renderBrief(tDist, tHeat, tCO2, cs, pb);
-    clearStartupPipeTimers();
-    startupPipes.forEach(l => { try { map.removeLayer(l); } catch(e) {} });
-    startupPipes = [];
+    clearStartupPipes();
     drawStartupPipes();
 
   } catch (err) {

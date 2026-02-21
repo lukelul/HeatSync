@@ -8,11 +8,29 @@
 <link rel="stylesheet" href="styles.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<!-- Firebase v9 compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
+
+<!-- Auth Overlay -->
+<div id="auth-overlay" class="auth-overlay" style="display:flex"></div>
+
+<!-- Reusable Modal -->
+<div id="app-modal" class="app-modal" style="display:none">
+  <div class="app-modal-card" id="app-modal-card"></div>
+</div>
+
+<!-- Bridge / Dashboard Widget -->
+<div id="bridge-widget" class="bridge-widget" style="display:none"></div>
+
+<!-- ========== PAGE: City Management ========== -->
+<div id="page-manage" style="display:none">
 <header>
   <div class="logo">Heat<span>Router</span></div>
-  <div class="tagline">Thermal Packet Switching // Chicago, IL</div>
+  <div class="tagline" id="city-tagline">Thermal Packet Switching</div>
   <div class="header-stats">
     <div class="hstat"><div class="hstat-val" id="total-heat">— MW</div><div class="hstat-label">Recoverable Heat</div></div>
     <div class="hstat"><div class="hstat-val" id="total-savings">—</div><div class="hstat-label">CO₂ Avoided/yr</div></div>
@@ -22,6 +40,7 @@
   </div>
 </header>
 <div class="left-panel">
+  <div id="city-selector" class="city-selector"></div>
   <div class="panel-title">Data Sources</div>
   <div class="ds-bar">
     <span class="ds-badge osrm">OSRM Roads</span><span class="ds-badge nrel">NREL ComStock</span>
@@ -65,6 +84,8 @@
   <div id="route-error" class="route-error" style="display:none"></div>
 </div>
 <div class="right-panel">
+  <div class="panel-title">Live Closed Loop</div>
+  <div id="live-loop" class="brief-box" style="font-size:9px;line-height:1.4;min-height:40px"><div class="select-hint">Waiting for API connection...</div></div>
   <div class="panel-title">Algorithm Trace</div>
   <div id="algo-steps"><div class="select-hint">Click any blue sink node — sources are auto-selected.</div></div>
   <div class="panel-title">Hourly Schedule · NREL ComStock Profiles</div>
@@ -76,8 +97,22 @@
   <div class="panel-title">Explain / Stakeholder Packet</div>
   <div id="brief-area"><div class="select-hint">Run optimization to generate auto-brief.</div></div>
 </div>
+</div>
+
+<!-- ========== PAGE: City Planner ========== -->
+<div id="page-planner" style="display:none"></div>
+
+<!-- Scripts: Firebase config first, then state/infra, then existing, then main -->
+<script src="firebase-config.js"></script>
+<script src="state.js"></script>
 <script src="config.js"></script>
 <script src="utils.js"></script>
+<script src="firestore.js"></script>
+<script src="auth.js"></script>
+<script src="router.js"></script>
+<script src="modal.js"></script>
+<script src="city-selector.js"></script>
+<script src="bridge.js"></script>
 <script src="obstructions.js"></script>
 <script src="routing.js"></script>
 <script src="map.js"></script>
@@ -86,6 +121,7 @@
 <script src="overlays.js"></script>
 <script src="projects.js"></script>
 <script src="optimization.js"></script>
+<script src="planner.js"></script>
 <script src="api.js"></script>
 <script src="main.js"></script>
 </body>
